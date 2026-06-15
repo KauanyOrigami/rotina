@@ -419,5 +419,23 @@ def telegram_status():
     configured = bool(_os.environ.get('TELEGRAM_BOT_TOKEN'))
     return jsonify({'configured': configured})
 
+import os as _os
+_TELEGRAM_TOKEN = _os.environ.get('TELEGRAM_BOT_TOKEN', '')
+
+if _TELEGRAM_TOKEN:
+    import bot as _bot
+
+    @app.route(f'/telegram/{_TELEGRAM_TOKEN}', methods=['POST'])
+    def telegram_webhook():
+        data = request.get_json(force=True) or {}
+        try:
+            if 'message' in data:
+                _bot.handle_message(data['message'])
+            elif 'callback_query' in data:
+                _bot.handle_callback(data['callback_query'])
+        except Exception as e:
+            print(f'[webhook] {e}')
+        return 'ok', 200
+
 if __name__ == '__main__':
     app.run(port=3001, debug=False)
