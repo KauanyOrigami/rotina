@@ -1,8 +1,9 @@
 import React from 'react';
-import { BrowserRouter, Routes, Route, NavLink, useLocation } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, NavLink } from 'react-router-dom';
 import './styles/global.css';
 import Today from './pages/Today';
 import Week from './pages/Week';
+import Month from './pages/Month';
 import Tasks from './pages/Tasks';
 import Setup from './pages/Setup';
 import Settings from './pages/Settings';
@@ -31,6 +32,7 @@ function Sidebar() {
         <div className="nav-label">Planner</div>
         <NavItem to="/"       icon="☀️" label="Hoje" />
         <NavItem to="/week"   icon="📅" label="Semana" />
+        <NavItem to="/month"  icon="🗓️" label="Mês" />
         <NavItem to="/tasks"  icon="✅" label="Tarefas" />
       </nav>
 
@@ -52,6 +54,7 @@ export default function App() {
           <Routes>
             <Route path="/"         element={<Today />} />
             <Route path="/week"     element={<Week />} />
+            <Route path="/month"    element={<Month />} />
             <Route path="/tasks"    element={<Tasks />} />
             <Route path="/setup"    element={<Setup />} />
             <Route path="/settings" element={<Settings />} />

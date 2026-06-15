@@ -1,0 +1,58 @@
+# ── Dependências ──────────────────────────────────────────
+node_modules/
+.pnp
+.pnp.js
+
+# ── Build / compilados ────────────────────────────────────
+frontend/build/
+frontend/.cache/
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+
+# ── Banco de dados ────────────────────────────────────────
+*.db
+*.sqlite
+*.sqlite3
+
+# ── Variáveis de ambiente (NUNCA commitar) ────────────────
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# ── Logs ──────────────────────────────────────────────────
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+logs/
+
+# ── Ferramentas de desenvolvimento ────────────────────────
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ── Claude Code (configurações locais) ───────────────────
+.claude/
+
+# ── Coverage / testes ─────────────────────────────────────
+coverage/
+.nyc_output/
+htmlcov/
+.pytest_cache/
+
+# ── Virtualenv Python ─────────────────────────────────────
+venv/
+env/
+.venv/

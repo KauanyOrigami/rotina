@@ -10,10 +10,18 @@ export default function Settings() {
   const [importDays,    setImportDays]    = useState(30);
   const [importing,     setImporting]     = useState(false);
   const [importResult,  setImportResult]  = useState(null);
-  const [tgConfigured,  setTgConfigured]  = useState(null); // null=carregando
+  const [tgConfigured,  setTgConfigured]  = useState(null);
+
+  // Tags state
+  const [tags,       setTags]       = useState([]);
+  const [newTagName, setNewTagName] = useState('');
+  const [newTagColor,setNewTagColor]= useState('#7c6fff');
+  const [tagError,   setTagError]   = useState('');
+  const [editingTag, setEditingTag] = useState(null); // {id, name, color}
 
   useEffect(() => {
     api.settings.get().then(setSettings);
+    api.tags.list().then(setTags).catch(() => {});
 
     const params   = new URLSearchParams(window.location.search);
     const msParam  = params.get('ms');
@@ -34,6 +42,38 @@ export default function Settings() {
     await api.settings.update({ [key]: String(value) });
     setSaved(true);
     setTimeout(() => setSaved(false), 1500);
+  };
+
+  // Tags handlers
+  const addTag = async () => {
+    const name = newTagName.trim();
+    if (!name) { setTagError('Digite um nome para a tag.'); return; }
+    if (tags.some(t => t.name.toLowerCase() === name.toLowerCase())) {
+      setTagError('Já existe uma tag com esse nome.'); return;
+    }
+    try {
+      const { id } = await api.tags.create({ name, color: newTagColor });
+      setTags(prev => [...prev, { id, name, color: newTagColor }].sort((a, b) => a.name.localeCompare(b.name)));
+      setNewTagName('');
+      setNewTagColor('#7c6fff');
+      setTagError('');
+    } catch {
+      setTagError('Erro ao criar tag.');
+    }
+  };
+
+  const deleteTag = async (id) => {
+    await api.tags.delete(id);
+    setTags(prev => prev.filter(t => t.id !== id));
+  };
+
+  const saveEditTag = async () => {
+    if (!editingTag) return;
+    const name = editingTag.name.trim();
+    if (!name) return;
+    await api.tags.update(editingTag.id, { name, color: editingTag.color });
+    setTags(prev => prev.map(t => t.id === editingTag.id ? { ...t, name, color: editingTag.color } : t));
+    setEditingTag(null);
   };
 
   const handleConnect = async () => {
@@ -87,6 +127,89 @@ export default function Settings() {
             onChange={v => update('weekend_enabled', v)}
           />
         </div>
+
+        <div className="divider" />
+
+        {/* ── Tags ── */}
+        <p className="section-title">Tags</p>
+        <div className="text-xs text-dim" style={{ marginBottom: 12 }}>
+          Use o formato <code style={{ background: 'var(--bg4)', padding: '1px 5px', borderRadius: 4 }}>["Nome"]</code> no título ao criar registros pelo bot para atribuir automaticamente uma tag.
+        </div>
+
+        {/* Lista de tags existentes */}
+        {tags.length > 0 && (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 14 }}>
+            {tags.map(tag => (
+              <div key={tag.id}>
+                {editingTag?.id === tag.id ? (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'var(--bg3)', border: '1px solid var(--border2)', borderRadius: 8, padding: '4px 8px' }}>
+                    <input
+                      value={editingTag.name}
+                      onChange={e => setEditingTag(et => ({ ...et, name: e.target.value }))}
+                      style={{ width: 90, padding: '2px 6px', fontSize: 12 }}
+                      onKeyDown={e => e.key === 'Enter' && saveEditTag()}
+                      autoFocus
+                    />
+                    <input
+                      type="color"
+                      value={editingTag.color}
+                      onChange={e => setEditingTag(et => ({ ...et, color: e.target.value }))}
+                      style={{ width: 24, height: 24, border: 'none', background: 'none', cursor: 'pointer', padding: 0 }}
+                    />
+                    <button className="btn btn-primary btn-sm" onClick={saveEditTag} style={{ padding: '2px 8px', fontSize: 11 }}>✓</button>
+                    <button className="btn btn-ghost btn-sm" onClick={() => setEditingTag(null)} style={{ padding: '2px 6px', fontSize: 11 }}>✕</button>
+                  </div>
+                ) : (
+                  <div
+                    className="tag-chip"
+                    style={{
+                      background: tag.color + '22',
+                      border: `1px solid ${tag.color}66`,
+                      color: tag.color,
+                    }}
+                  >
+                    <span
+                      className="tag-chip-label"
+                      onClick={() => setEditingTag({ id: tag.id, name: tag.name, color: tag.color })}
+                      title="Clique para editar"
+                    >
+                      <span style={{ opacity: 0.6 }}>["</span>{tag.name}<span style={{ opacity: 0.6 }}>"]</span>
+                    </span>
+                    <button className="tag-chip-del" onClick={() => deleteTag(tag.id)} title="Remover tag">×</button>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Formulário de nova tag */}
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <input
+            value={newTagName}
+            onChange={e => { setNewTagName(e.target.value); setTagError(''); }}
+            onKeyDown={e => e.key === 'Enter' && addTag()}
+            placeholder='Nome da tag (ex: Trabalho)'
+            style={{ flex: 1, maxWidth: 220 }}
+          />
+          <div style={{ position: 'relative' }} title="Escolher cor">
+            <input
+              type="color"
+              value={newTagColor}
+              onChange={e => setNewTagColor(e.target.value)}
+              style={{
+                width: 36, height: 36,
+                border: '1px solid var(--border2)',
+                borderRadius: 8,
+                padding: 3,
+                cursor: 'pointer',
+                background: 'var(--bg3)',
+              }}
+            />
+          </div>
+          <button className="btn btn-primary btn-sm" onClick={addTag}>+ Adicionar</button>
+        </div>
+        {tagError && <div className="text-xs" style={{ color: 'var(--red)', marginTop: 6 }}>{tagError}</div>}
 
         <div className="divider" />
 

@@ -19,7 +19,7 @@ const EFFORTS = [
 const empty = () => ({
   title: '', type: 'academic', effort: 'medium',
   estimated_minutes: 60, due_date: '', allow_split: false,
-  allow_weekend: false, notes: '',
+  allow_weekend: false, notes: '', tag_id: null,
   is_event: false, event_date: '', start_time: '', end_time: '',
 });
 
@@ -31,6 +31,20 @@ function DueBadge({ dueDate }) {
   if (days === 1)  return <span className="badge badge-amber">Amanhã</span>;
   if (days <= 3)   return <span className="badge badge-amber">{days} dias</span>;
   return <span className="badge badge-gray">{format(parseISO(dueDate), "d MMM", { locale: ptBR })}</span>;
+}
+
+function TagChip({ name, color }) {
+  if (!name) return null;
+  const c = color || '#7c6fff';
+  return (
+    <span style={{
+      fontSize: 10, fontFamily: "'DM Mono', monospace",
+      padding: '2px 7px', borderRadius: 10,
+      background: c + '22', border: `1px solid ${c}55`, color: c,
+    }}>
+      {name}
+    </span>
+  );
 }
 
 function TaskCard({ task, onEdit, onDelete, onStatusChange, kanban, onDragStart }) {
@@ -50,6 +64,7 @@ function TaskCard({ task, onEdit, onDelete, onStatusChange, kanban, onDragStart 
               ? <span className="badge badge-blue">{format(parseISO(task.event_date), "d MMM", { locale: ptBR })}{task.start_time ? ` ${task.start_time}` : ''}</span>
               : <DueBadge dueDate={task.due_date} />
             }
+            <TagChip name={task.tag_name} color={task.tag_color} />
           </div>
           <div className="flex flex-center gap-8 mt-4" style={{ flexWrap: 'wrap' }}>
             <span className="text-xs text-dim">
@@ -122,20 +137,25 @@ function KanbanColumn({ title, status, tasks, onEdit, onDelete, onStatusChange, 
 }
 
 export default function Tasks() {
-  const [tasks, setTasks]     = useState([]);
+  const [tasks,   setTasks]   = useState([]);
+  const [tags,    setTags]    = useState([]);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter]   = useState('pending');
-  const [view, setView]       = useState('list');
-  const [modal, setModal]     = useState(null);
-  const [form, setForm]       = useState(empty());
-  const [saving, setSaving]   = useState(false);
-  const [dragOver, setDragOver] = useState(null); // 'tasks' | 'events' | null
+  const [filter,  setFilter]  = useState('pending');
+  const [view,    setView]    = useState('list');
+  const [modal,   setModal]   = useState(null);
+  const [form,    setForm]    = useState(empty());
+  const [saving,  setSaving]  = useState(false);
+  const [dragOver, setDragOver] = useState(null);
 
   const load = async () => {
     setLoading(true);
     try {
-      const data = await api.tasks.list({});
+      const [data, tagData] = await Promise.all([
+        api.tasks.list({}),
+        api.tags.list(),
+      ]);
       setTasks(data);
+      setTags(tagData);
     } finally {
       setLoading(false);
     }
@@ -153,6 +173,7 @@ export default function Tasks() {
       allow_split: Boolean(task.allow_split),
       allow_weekend: Boolean(task.allow_weekend),
       notes: task.notes || '',
+      tag_id: task.tag_id || null,
       is_event: Boolean(task.is_event),
       event_date: task.event_date || '',
       start_time: task.start_time || '',
@@ -407,6 +428,48 @@ export default function Tasks() {
           <div className="form-row" style={{ marginBottom: 16 }}>
             <Toggle value={form.is_event} onChange={v => set('is_event', v)} label="É um evento (tem data e horário fixos)" />
           </div>
+
+          {tags.length > 0 && (
+            <div className="form-group">
+              <label>Tag</label>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                <button
+                  type="button"
+                  onClick={() => set('tag_id', null)}
+                  style={{
+                    padding: '3px 12px', borderRadius: 20, fontSize: 12,
+                    border: '1px solid var(--border2)', cursor: 'pointer',
+                    background: !form.tag_id ? 'var(--bg4)' : 'var(--bg3)',
+                    color: !form.tag_id ? 'var(--text)' : 'var(--text3)',
+                    fontWeight: !form.tag_id ? 500 : 400,
+                  }}
+                >
+                  Nenhuma
+                </button>
+                {tags.map(tag => {
+                  const sel = form.tag_id === tag.id;
+                  return (
+                    <button
+                      key={tag.id}
+                      type="button"
+                      onClick={() => set('tag_id', sel ? null : tag.id)}
+                      style={{
+                        padding: '3px 12px', borderRadius: 20, fontSize: 12,
+                        fontFamily: "'DM Mono', monospace", cursor: 'pointer',
+                        border: `1px solid ${sel ? tag.color + 'aa' : tag.color + '44'}`,
+                        background: sel ? tag.color + '28' : tag.color + '0d',
+                        color: tag.color,
+                        fontWeight: sel ? 600 : 400,
+                        transition: 'all 0.15s',
+                      }}
+                    >
+                      {tag.name}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           <div className="form-row">
             <div className="form-group">

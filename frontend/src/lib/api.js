@@ -48,6 +48,12 @@ export const api = {
     get: () => req('GET', '/api/settings'),
     update: (data) => req('PATCH', '/api/settings', data),
   },
+  tags: {
+    list:   ()        => req('GET',    '/api/tags'),
+    create: (data)    => req('POST',   '/api/tags', data),
+    update: (id, data)=> req('PUT',    `/api/tags/${id}`, data),
+    delete: (id)      => req('DELETE', `/api/tags/${id}`),
+  },
   telegram: {
     status: () => req('GET', '/api/telegram/status'),
   },

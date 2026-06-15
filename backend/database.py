@@ -93,6 +93,13 @@ def init_db():
             value TEXT NOT NULL
         );
 
+        CREATE TABLE IF NOT EXISTS tags (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL UNIQUE,
+            color TEXT NOT NULL DEFAULT '#7c6fff',
+            created_at TEXT DEFAULT (datetime('now'))
+        );
+
         INSERT OR IGNORE INTO settings (key, value) VALUES ('weekend_enabled', 'false');
         INSERT OR IGNORE INTO settings (key, value) VALUES ('planning_day', '0');
     """)
@@ -112,6 +119,8 @@ def init_db():
 def migrate_db():
     conn = get_db()
     c = conn.cursor()
+
+    # Migrate tasks columns
     existing = {r[1] for r in c.execute("PRAGMA table_info(tasks)").fetchall()}
     for col, definition in [
         ('is_event',    'INTEGER NOT NULL DEFAULT 0'),
@@ -119,9 +128,19 @@ def migrate_db():
         ('start_time',  'TEXT'),
         ('end_time',    'TEXT'),
         ('external_id', 'TEXT'),
+        ('tag_id',      'TEXT'),
     ]:
         if col not in existing:
             c.execute(f"ALTER TABLE tasks ADD COLUMN {col} {definition}")
+
+    # Ensure tags table exists for DBs created before this version
+    c.execute("""CREATE TABLE IF NOT EXISTS tags (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL UNIQUE,
+        color TEXT NOT NULL DEFAULT '#7c6fff',
+        created_at TEXT DEFAULT (datetime('now'))
+    )""")
+
     conn.commit()
     conn.close()
 

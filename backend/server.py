@@ -141,15 +141,58 @@ def delete_habit(id_):
     conn.commit(); conn.close()
     return jsonify({'ok': True})
 
+# ── Tags ───────────────────────────────────────────────────
+@app.route('/api/tags', methods=['GET'])
+def get_tags():
+    conn = get_db()
+    rows = conn.execute('SELECT * FROM tags ORDER BY name').fetchall()
+    conn.close()
+    return jsonify(rows_to_list(rows))
+
+@app.route('/api/tags', methods=['POST'])
+def create_tag():
+    data = request.json
+    id_ = str(uuid.uuid4())
+    conn = get_db()
+    try:
+        conn.execute('INSERT INTO tags (id,name,color) VALUES (?,?,?)',
+                     (id_, data['name'].strip(), data.get('color', '#7c6fff')))
+        conn.commit(); conn.close()
+        return jsonify({'id': id_})
+    except Exception as e:
+        conn.close()
+        return jsonify({'error': str(e)}), 400
+
+@app.route('/api/tags/<id_>', methods=['PUT'])
+def update_tag(id_):
+    data = request.json
+    conn = get_db()
+    conn.execute('UPDATE tags SET name=?,color=? WHERE id=?',
+                 (data['name'].strip(), data.get('color', '#7c6fff'), id_))
+    conn.commit(); conn.close()
+    return jsonify({'ok': True})
+
+@app.route('/api/tags/<id_>', methods=['DELETE'])
+def delete_tag(id_):
+    conn = get_db()
+    conn.execute('DELETE FROM tags WHERE id=?', (id_,))
+    conn.commit(); conn.close()
+    return jsonify({'ok': True})
+
 # ── Tasks ──────────────────────────────────────────────────
 @app.route('/api/tasks', methods=['GET'])
 def get_tasks():
     status = request.args.get('status')
     conn = get_db()
+    base = '''
+        SELECT t.*, tg.name as tag_name, tg.color as tag_color
+        FROM tasks t
+        LEFT JOIN tags tg ON t.tag_id = tg.id
+    '''
     if status:
-        rows = conn.execute('SELECT * FROM tasks WHERE status=? ORDER BY due_date ASC, created_at ASC', (status,)).fetchall()
+        rows = conn.execute(base + ' WHERE t.status=? ORDER BY t.due_date ASC, t.created_at ASC', (status,)).fetchall()
     else:
-        rows = conn.execute('SELECT * FROM tasks ORDER BY due_date ASC, created_at ASC').fetchall()
+        rows = conn.execute(base + ' ORDER BY t.due_date ASC, t.created_at ASC').fetchall()
     conn.close()
     return jsonify(rows_to_list(rows))
 
@@ -158,16 +201,17 @@ def create_task():
     data = request.json
     id_ = str(uuid.uuid4())
     conn = get_db()
-    conn.execute('INSERT INTO tasks (id,title,type,effort,estimated_minutes,due_date,allow_split,allow_weekend,notes,is_event,event_date,start_time,end_time) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)',
-                 (id_, data['title'], data.get('type','personal'), data.get('effort','medium'),
-                  data.get('estimated_minutes',60), data.get('due_date'),
-                  1 if data.get('allow_split') else 0,
-                  1 if data.get('allow_weekend') else 0,
-                  data.get('notes'),
-                  1 if data.get('is_event') else 0,
-                  data.get('event_date'),
-                  data.get('start_time'),
-                  data.get('end_time')))
+    conn.execute(
+        'INSERT INTO tasks (id,title,type,effort,estimated_minutes,due_date,allow_split,allow_weekend,notes,is_event,event_date,start_time,end_time,tag_id) '
+        'VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+        (id_, data['title'], data.get('type', 'personal'), data.get('effort', 'medium'),
+         data.get('estimated_minutes', 60), data.get('due_date'),
+         1 if data.get('allow_split') else 0,
+         1 if data.get('allow_weekend') else 0,
+         data.get('notes'),
+         1 if data.get('is_event') else 0,
+         data.get('event_date'), data.get('start_time'), data.get('end_time'),
+         data.get('tag_id')))
     conn.commit(); conn.close()
     return jsonify({'id': id_})
 
@@ -175,17 +219,16 @@ def create_task():
 def update_task(id_):
     data = request.json
     conn = get_db()
-    conn.execute('UPDATE tasks SET title=?,type=?,effort=?,estimated_minutes=?,due_date=?,allow_split=?,allow_weekend=?,status=?,notes=?,is_event=?,event_date=?,start_time=?,end_time=? WHERE id=?',
-                 (data['title'], data.get('type','personal'), data.get('effort','medium'),
-                  data.get('estimated_minutes',60), data.get('due_date'),
-                  1 if data.get('allow_split') else 0,
-                  1 if data.get('allow_weekend') else 0,
-                  data.get('status','pending'), data.get('notes'),
-                  1 if data.get('is_event') else 0,
-                  data.get('event_date'),
-                  data.get('start_time'),
-                  data.get('end_time'),
-                  id_))
+    conn.execute(
+        'UPDATE tasks SET title=?,type=?,effort=?,estimated_minutes=?,due_date=?,allow_split=?,allow_weekend=?,status=?,notes=?,is_event=?,event_date=?,start_time=?,end_time=?,tag_id=? WHERE id=?',
+        (data['title'], data.get('type', 'personal'), data.get('effort', 'medium'),
+         data.get('estimated_minutes', 60), data.get('due_date'),
+         1 if data.get('allow_split') else 0,
+         1 if data.get('allow_weekend') else 0,
+         data.get('status', 'pending'), data.get('notes'),
+         1 if data.get('is_event') else 0,
+         data.get('event_date'), data.get('start_time'), data.get('end_time'),
+         data.get('tag_id'), id_))
     conn.commit(); conn.close()
     return jsonify({'ok': True})
 

@@ -1,8 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\KauanyArantes\\\\Downloads\\\\rotina\\\\rotina\" -Force)",
-      "Bash(Select-Object Name, PSIsContainer)"
-    ]
-  }
-}
