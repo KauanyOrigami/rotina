@@ -12,7 +12,11 @@ from ms_auth import (
 )
 
 app = Flask(__name__)
-CORS(app)
+
+CORS(app, origins=[
+    "https://rotina-plum.vercel.app",
+    "http://localhost:3000"
+])
 
 init_db()
 migrate_db()
