@@ -423,7 +423,7 @@ import os as _os
 _TELEGRAM_TOKEN = _os.environ.get('TELEGRAM_BOT_TOKEN', '')
 
 if _TELEGRAM_TOKEN:
-    import bot as _bot
+    import telegram_bot as _bot  # type: ignore
 
     @app.route(f'/telegram/{_TELEGRAM_TOKEN}', methods=['POST'])
     def telegram_webhook():
