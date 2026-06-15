@@ -1,11 +1,31 @@
 const BASE = process.env.REACT_APP_API_URL || 'http://localhost:3001';
 
+function getToken() {
+  try {
+    const stored = localStorage.getItem('rotina_auth');
+    return stored ? JSON.parse(stored).token : null;
+  } catch {
+    return null;
+  }
+}
+
 async function req(method, path, body) {
+  const token = getToken();
+  const headers = { 'Content-Type': 'application/json' };
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+
   const res = await fetch(`${BASE}${path}`, {
     method,
-    headers: { 'Content-Type': 'application/json' },
+    headers,
     body: body ? JSON.stringify(body) : undefined,
   });
+
+  if (res.status === 401) {
+    localStorage.removeItem('rotina_auth');
+    window.location.reload();
+    throw new Error('Sessão expirada');
+  }
+
   if (!res.ok) throw new Error(`API error ${res.status}`);
   return res.json();
 }

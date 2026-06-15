@@ -26,7 +26,7 @@ _SCOPES    = 'openid profile email User.Read Calendars.Read offline_access'
 def is_configured():
     return bool(MS_CLIENT_ID and MS_CLIENT_SECRET)
 
-def get_auth_url():
+def get_auth_url(user_id='kauany'):
     params = urllib.parse.urlencode({
         'client_id':     MS_CLIENT_ID,
         'response_type': 'code',
@@ -34,6 +34,7 @@ def get_auth_url():
         'scope':         _SCOPES,
         'response_mode': 'query',
         'prompt':        'select_account',
+        'state':         user_id,
     })
     return f'{_AUTHORITY}/{MS_TENANT_ID}/oauth2/v2.0/authorize?{params}'
 

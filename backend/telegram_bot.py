@@ -16,9 +16,25 @@ if os.path.exists(_env_path):
                 _k, _v = _line.split('=', 1)
                 os.environ.setdefault(_k.strip(), _v.strip().strip('"\''))
 
-TOKEN           = os.environ.get('TELEGRAM_BOT_TOKEN', '')
-ALLOWED_CHAT_ID = os.environ.get('TELEGRAM_CHAT_ID', '')
-BASE            = f'https://api.telegram.org/bot{TOKEN}'
+TOKEN    = os.environ.get('TELEGRAM_BOT_TOKEN', '')
+BASE     = f'https://api.telegram.org/bot{TOKEN}'
+
+# Mapa chat_id → user_id do banco
+_CHAT_KAUANY = os.environ.get('TELEGRAM_CHAT_ID_KAUANY') or os.environ.get('TELEGRAM_CHAT_ID', '')
+_CHAT_LUIS   = os.environ.get('TELEGRAM_CHAT_ID_LUIS', '')
+
+CHAT_USER_MAP = {}
+if _CHAT_KAUANY:
+    CHAT_USER_MAP[str(_CHAT_KAUANY)] = 'kauany'
+if _CHAT_LUIS:
+    CHAT_USER_MAP[str(_CHAT_LUIS)] = 'luis'
+
+# user_id do chat que está sendo processado no momento (single-thread)
+_processing_user = 'kauany'
+
+
+def get_user_db():
+    return get_db(_processing_user)
 
 from database import get_db
 from scheduler import generate_suggestions
@@ -292,7 +308,7 @@ def _get_tasks(conn):
     ).fetchall()
 
 def cmd_tarefas(chat_id, _):
-    conn = get_db(); rows = _get_tasks(conn); conn.close()
+    conn = get_user_db(); rows = _get_tasks(conn); conn.close()
     if not rows:
         send(chat_id, f"{hdr('📋', 'Tarefas')}\n\n_Nenhuma tarefa pendente._ ✅")
         return
@@ -322,7 +338,7 @@ def cmd_tarefa(chat_id, args):
 def cmd_concluir(chat_id, args):
     if not args or not args.strip().isdigit():
         send(chat_id, "Use: `/concluir N`  _(ex: /concluir 2)_"); return
-    conn = get_db(); rows = _get_tasks(conn)
+    conn = get_user_db(); rows = _get_tasks(conn)
     n = int(args.strip()) - 1
     if not (0 <= n < len(rows)):
         conn.close(); send(chat_id, "❌ Número inválido. Use /tarefas para ver a lista."); return
@@ -334,7 +350,7 @@ def cmd_concluir(chat_id, args):
 def cmd_excluir_tarefa(chat_id, args):
     if not args or not args.strip().isdigit():
         send(chat_id, "Use: `/excluir_tarefa N`  _(ex: /excluir\\_tarefa 2)_"); return
-    conn = get_db(); rows = _get_tasks(conn)
+    conn = get_user_db(); rows = _get_tasks(conn)
     n = int(args.strip()) - 1
     if not (0 <= n < len(rows)):
         conn.close(); send(chat_id, "❌ Número inválido. Use /tarefas para ver a lista."); return
@@ -352,7 +368,7 @@ def _get_events(conn):
     ).fetchall()
 
 def cmd_eventos(chat_id, _):
-    conn = get_db(); rows = _get_events(conn); conn.close()
+    conn = get_user_db(); rows = _get_events(conn); conn.close()
     if not rows:
         send(chat_id, f"{hdr('📅', 'Eventos')}\n\n_Nenhum evento próximo._")
         return
@@ -387,7 +403,7 @@ def cmd_evento(chat_id, args):
 def cmd_excluir_evento(chat_id, args):
     if not args or not args.strip().isdigit():
         send(chat_id, "Use: `/excluir_evento N`"); return
-    conn = get_db(); rows = _get_events(conn)
+    conn = get_user_db(); rows = _get_events(conn)
     n = int(args.strip()) - 1
     if not (0 <= n < len(rows)):
         conn.close(); send(chat_id, "❌ Número inválido. Use /eventos para ver a lista."); return
@@ -407,7 +423,7 @@ def _get_habits(conn):
     return result
 
 def cmd_habitos(chat_id, _):
-    conn = get_db(); rows = _get_habits(conn); conn.close()
+    conn = get_user_db(); rows = _get_habits(conn); conn.close()
     if not rows:
         send(chat_id, f"{hdr('🔁', 'Hábitos')}\n\n_Nenhum hábito cadastrado._")
         return
@@ -437,7 +453,7 @@ def _ask_hab_days(chat_id, name):
 def cmd_excluir_habito(chat_id, args):
     if not args or not args.strip().isdigit():
         send(chat_id, "Use: `/excluir_habito N`"); return
-    conn = get_db(); rows = _get_habits(conn)
+    conn = get_user_db(); rows = _get_habits(conn)
     n = int(args.strip()) - 1
     if not (0 <= n < len(rows)):
         conn.close(); send(chat_id, "❌ Número inválido. Use /habitos para ver a lista."); return
@@ -454,7 +470,7 @@ def _get_blocks(conn):
     ).fetchall()
 
 def cmd_blocos(chat_id, _):
-    conn = get_db(); rows = _get_blocks(conn); conn.close()
+    conn = get_user_db(); rows = _get_blocks(conn); conn.close()
     if not rows:
         send(chat_id, f"{hdr('🏫', 'Blocos Fixos')}\n\n_Nenhum bloco fixo cadastrado._")
         return
@@ -482,7 +498,7 @@ def cmd_bloco(chat_id, args):
 def cmd_excluir_bloco(chat_id, args):
     if not args or not args.strip().isdigit():
         send(chat_id, "Use: `/excluir_bloco N`"); return
-    conn = get_db(); rows = _get_blocks(conn)
+    conn = get_user_db(); rows = _get_blocks(conn)
     n = int(args.strip()) - 1
     if not (0 <= n < len(rows)):
         conn.close(); send(chat_id, "❌ Número inválido. Use /blocos para ver a lista."); return
@@ -502,7 +518,7 @@ def cmd_hoje(chat_id, _):
     mes_nome = MONTH_NAMES[today_dt.month]
     data_fmt = f"{dia_nome}, {today_dt.day} de {mes_nome}"
 
-    conn = get_db()
+    conn = get_user_db()
     try:
         plan, free_windows, day_weight = generate_suggestions(conn, today)
         plan_id = plan['id']
@@ -585,7 +601,7 @@ def cmd_hoje(chat_id, _):
 # ── Criadores no banco ────────────────────────────────────────────
 
 def _save_task(chat_id, title, effort, due_date, tag_id=None, tag_name=None, tag_color=None):
-    conn = get_db()
+    conn = get_user_db()
     conn.execute(
         "INSERT INTO tasks (id,title,type,effort,estimated_minutes,status,due_date,is_event,tag_id) "
         "VALUES (?,?,'personal',?,60,'pending',?,0,?)",
@@ -603,7 +619,7 @@ def _save_task(chat_id, title, effort, due_date, tag_id=None, tag_name=None, tag
     ))
 
 def _save_evento(chat_id, title, event_date, start_time, end_time, tag_id=None, tag_name=None, tag_color=None):
-    conn = get_db()
+    conn = get_user_db()
     conn.execute(
         "INSERT INTO tasks (id,title,type,effort,estimated_minutes,status,is_event,event_date,start_time,end_time,tag_id) "
         "VALUES (?,?,'personal','low',60,'pending',1,?,?,?,?)",
@@ -619,7 +635,7 @@ def _save_evento(chat_id, title, event_date, start_time, end_time, tag_id=None, 
     send(chat_id, '\n'.join(lines))
 
 def _save_habito(chat_id, name, days, duration):
-    conn = get_db()
+    conn = get_user_db()
     conn.execute(
         "INSERT INTO habits (id,name,activity_type,duration_minutes,days_of_week,max_stress_weight,is_active) "
         "VALUES (?,?,'personal',?,?,5,1)",
@@ -635,7 +651,7 @@ def _save_habito(chat_id, name, days, duration):
     ))
 
 def _save_bloco(chat_id, name, day, start_time, end_time):
-    conn = get_db()
+    conn = get_user_db()
     conn.execute(
         "INSERT INTO fixed_blocks (id,label,day_of_week,start_time,end_time,is_active) "
         "VALUES (?,?,?,?,?,1)",
@@ -653,7 +669,12 @@ def _save_bloco(chat_id, name, day, start_time, end_time):
 # ── Callback query ────────────────────────────────────────────────
 
 def handle_callback(cb):
+    global _processing_user
     chat_id = cb['message']['chat']['id']
+    user_id = CHAT_USER_MAP.get(str(chat_id))
+    if not user_id:
+        return
+    _processing_user = user_id
     cb_id   = cb['id']
     data    = cb['data']
     st      = st_get(chat_id)
@@ -666,7 +687,7 @@ def handle_callback(cb):
         val = data[4:]
         tag_id, tag_name, tag_color = None, None, None
         if val != 'none':
-            conn2 = get_db()
+            conn2 = get_user_db()
             row = conn2.execute("SELECT name, color FROM tags WHERE id=?", (val,)).fetchone()
             conn2.close()
             if row:
@@ -789,7 +810,7 @@ def handle_text_step(chat_id, text, st):
     step = st['step']
 
     if step == 'task:title':
-        conn = get_db()
+        conn = get_user_db()
         clean_title, tag_id, tag_name, tag_color = extract_tag(text, conn)
         if tag_id:
             # Tag detectada no título — pula etapa de seleção
@@ -828,7 +849,7 @@ def handle_text_step(chat_id, text, st):
                    tag_id=st.get('tag_id'), tag_name=st.get('tag_name'), tag_color=st.get('tag_color'))
 
     elif step == 'evt:title':
-        conn = get_db()
+        conn = get_user_db()
         clean_title, tag_id, tag_name, tag_color = extract_tag(text, conn)
         if tag_id:
             conn.close()
@@ -935,11 +956,14 @@ COMMANDS = {
 }
 
 def handle_message(message):
+    global _processing_user
     chat_id = message['chat']['id']
     text    = message.get('text', '').strip()
 
-    if ALLOWED_CHAT_ID and str(chat_id) != str(ALLOWED_CHAT_ID):
+    user_id = CHAT_USER_MAP.get(str(chat_id))
+    if not user_id:
         send(chat_id, "⛔ Acesso não autorizado."); return
+    _processing_user = user_id
 
     st = st_get(chat_id)
 

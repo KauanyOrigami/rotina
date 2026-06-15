@@ -1,20 +1,36 @@
 import sqlite3
 import os
 import json
+import shutil
 from datetime import datetime, date, timedelta
 import uuid
 
-DB_PATH = os.path.join(os.path.dirname(__file__), 'rotina.db')
+_BACKEND_DIR = os.path.dirname(__file__)
 
-def get_db():
-    conn = sqlite3.connect(DB_PATH)
+DB_PATHS = {
+    'kauany': os.path.join(_BACKEND_DIR, 'rotina_kauany.db'),
+    'luis':   os.path.join(_BACKEND_DIR, 'rotina_luis.db'),
+}
+
+# Banco legado (migrado para kauany na primeira inicialização)
+_OLD_DB = os.path.join(_BACKEND_DIR, 'rotina.db')
+
+
+def get_db(user_id='kauany'):
+    path = DB_PATHS.get(user_id, DB_PATHS['kauany'])
+    conn = sqlite3.connect(path)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     conn.execute("PRAGMA journal_mode=WAL")
     return conn
 
-def init_db():
-    conn = get_db()
+
+def _init_for_user(user_id):
+    # Migra banco legado para kauany na primeira vez
+    if user_id == 'kauany' and not os.path.exists(DB_PATHS['kauany']) and os.path.exists(_OLD_DB):
+        shutil.copy2(_OLD_DB, DB_PATHS['kauany'])
+
+    conn = get_db(user_id)
     c = conn.cursor()
     c.executescript("""
         CREATE TABLE IF NOT EXISTS stress_levels (
@@ -107,20 +123,23 @@ def init_db():
     count = c.execute("SELECT COUNT(*) FROM stress_levels").fetchone()[0]
     if count == 0:
         defaults = [
-            (str(uuid.uuid4()), 'Leve', 1, json.dumps(['exercise','reading','study','leisure','rest']), '#22c55e'),
-            (str(uuid.uuid4()), 'Moderado', 3, json.dumps(['reading','study','leisure','rest']), '#f59e0b'),
-            (str(uuid.uuid4()), 'Pesado', 5, json.dumps(['leisure','rest']), '#ef4444'),
+            (str(uuid.uuid4()), 'Leve',     1, json.dumps(['exercise','reading','study','leisure','rest']), '#22c55e'),
+            (str(uuid.uuid4()), 'Moderado', 3, json.dumps(['reading','study','leisure','rest']),            '#f59e0b'),
+            (str(uuid.uuid4()), 'Pesado',   5, json.dumps(['leisure','rest']),                             '#ef4444'),
         ]
-        c.executemany("INSERT INTO stress_levels (id,label,weight,allowed_activity_types,color) VALUES (?,?,?,?,?)", defaults)
+        c.executemany(
+            "INSERT INTO stress_levels (id,label,weight,allowed_activity_types,color) VALUES (?,?,?,?,?)",
+            defaults,
+        )
 
     conn.commit()
     conn.close()
 
-def migrate_db():
-    conn = get_db()
+
+def _migrate_for_user(user_id):
+    conn = get_db(user_id)
     c = conn.cursor()
 
-    # Migrate tasks columns
     existing = {r[1] for r in c.execute("PRAGMA table_info(tasks)").fetchall()}
     for col, definition in [
         ('is_event',    'INTEGER NOT NULL DEFAULT 0'),
@@ -133,7 +152,6 @@ def migrate_db():
         if col not in existing:
             c.execute(f"ALTER TABLE tasks ADD COLUMN {col} {definition}")
 
-    # Ensure tags table exists for DBs created before this version
     c.execute("""CREATE TABLE IF NOT EXISTS tags (
         id TEXT PRIMARY KEY,
         name TEXT NOT NULL UNIQUE,
@@ -143,6 +161,19 @@ def migrate_db():
 
     conn.commit()
     conn.close()
+
+
+def init_db(user_id=None):
+    users = [user_id] if user_id else list(DB_PATHS.keys())
+    for uid in users:
+        _init_for_user(uid)
+
+
+def migrate_db(user_id=None):
+    users = [user_id] if user_id else list(DB_PATHS.keys())
+    for uid in users:
+        _migrate_for_user(uid)
+
 
 def row_to_dict(row):
     if row is None:

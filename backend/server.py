@@ -1,10 +1,11 @@
-from flask import Flask, request, jsonify, redirect
+from flask import Flask, request, jsonify, redirect, g
 from flask_cors import CORS
 import json
 import uuid
 from datetime import datetime, timedelta
-from database import get_db, init_db, migrate_db
+from database import get_db, init_db, migrate_db, DB_PATHS
 from scheduler import generate_suggestions
+from auth import require_auth, check_credentials, create_token, USER_DISPLAY, USERS
 from ms_auth import (
     is_configured, get_auth_url, handle_callback,
     get_access_token, get_connection_info, disconnect,
@@ -18,16 +19,37 @@ CORS(app, origins=[
     "http://localhost:3000"
 ])
 
-init_db()
-migrate_db()
+for _uid in DB_PATHS:
+    init_db(_uid)
+    migrate_db(_uid)
 
 def rows_to_list(rows):
     return [dict(r) for r in rows]
 
-# ── Stress Levels ──────────────────────────────────────────
+# ── Auth ───────────────────────────────────────────────────────────
+@app.route('/api/auth/login', methods=['POST'])
+def login():
+    data = request.json or {}
+    username = (data.get('username') or '').strip().lower()
+    password = data.get('password') or ''
+    if not check_credentials(username, password):
+        return jsonify({'error': 'Usuário ou senha inválidos'}), 401
+    token = create_token(username)
+    return jsonify({
+        'token': token,
+        'user': {'id': username, 'name': USER_DISPLAY.get(username, username)},
+    })
+
+@app.route('/api/auth/me', methods=['GET'])
+@require_auth
+def me():
+    return jsonify({'id': g.user_id, 'name': USER_DISPLAY.get(g.user_id, g.user_id)})
+
+# ── Stress Levels ──────────────────────────────────────────────────
 @app.route('/api/stress-levels', methods=['GET'])
+@require_auth
 def get_stress_levels():
-    conn = get_db()
+    conn = get_db(g.user_id)
     rows = conn.execute('SELECT * FROM stress_levels ORDER BY weight').fetchall()
     result = []
     for r in rows:
@@ -38,35 +60,39 @@ def get_stress_levels():
     return jsonify(result)
 
 @app.route('/api/stress-levels', methods=['POST'])
+@require_auth
 def create_stress_level():
     data = request.json
     id_ = str(uuid.uuid4())
-    conn = get_db()
+    conn = get_db(g.user_id)
     conn.execute('INSERT INTO stress_levels (id,label,weight,allowed_activity_types,color) VALUES (?,?,?,?,?)',
                  (id_, data['label'], data['weight'], json.dumps(data.get('allowed_activity_types', [])), data.get('color','#888888')))
     conn.commit(); conn.close()
     return jsonify({'id': id_})
 
 @app.route('/api/stress-levels/<id_>', methods=['PUT'])
+@require_auth
 def update_stress_level(id_):
     data = request.json
-    conn = get_db()
+    conn = get_db(g.user_id)
     conn.execute('UPDATE stress_levels SET label=?,weight=?,allowed_activity_types=?,color=? WHERE id=?',
                  (data['label'], data['weight'], json.dumps(data.get('allowed_activity_types',[])), data.get('color','#888888'), id_))
     conn.commit(); conn.close()
     return jsonify({'ok': True})
 
 @app.route('/api/stress-levels/<id_>', methods=['DELETE'])
+@require_auth
 def delete_stress_level(id_):
-    conn = get_db()
+    conn = get_db(g.user_id)
     conn.execute('DELETE FROM stress_levels WHERE id=?', (id_,))
     conn.commit(); conn.close()
     return jsonify({'ok': True})
 
-# ── Fixed Blocks ───────────────────────────────────────────
+# ── Fixed Blocks ───────────────────────────────────────────────────
 @app.route('/api/fixed-blocks', methods=['GET'])
+@require_auth
 def get_fixed_blocks():
-    conn = get_db()
+    conn = get_db(g.user_id)
     rows = conn.execute("""
         SELECT fb.*, sl.label as stress_label, sl.weight as stress_weight, sl.color as stress_color
         FROM fixed_blocks fb
@@ -77,19 +103,21 @@ def get_fixed_blocks():
     return jsonify(rows_to_list(rows))
 
 @app.route('/api/fixed-blocks', methods=['POST'])
+@require_auth
 def create_fixed_block():
     data = request.json
     id_ = str(uuid.uuid4())
-    conn = get_db()
+    conn = get_db(g.user_id)
     conn.execute('INSERT INTO fixed_blocks (id,label,day_of_week,start_time,end_time,stress_level_id) VALUES (?,?,?,?,?,?)',
                  (id_, data['label'], data['day_of_week'], data['start_time'], data['end_time'], data.get('stress_level_id')))
     conn.commit(); conn.close()
     return jsonify({'id': id_})
 
 @app.route('/api/fixed-blocks/<id_>', methods=['PUT'])
+@require_auth
 def update_fixed_block(id_):
     data = request.json
-    conn = get_db()
+    conn = get_db(g.user_id)
     conn.execute('UPDATE fixed_blocks SET label=?,day_of_week=?,start_time=?,end_time=?,stress_level_id=?,is_active=? WHERE id=?',
                  (data['label'], data['day_of_week'], data['start_time'], data['end_time'],
                   data.get('stress_level_id'), data.get('is_active',1), id_))
@@ -97,16 +125,18 @@ def update_fixed_block(id_):
     return jsonify({'ok': True})
 
 @app.route('/api/fixed-blocks/<id_>', methods=['DELETE'])
+@require_auth
 def delete_fixed_block(id_):
-    conn = get_db()
+    conn = get_db(g.user_id)
     conn.execute('DELETE FROM fixed_blocks WHERE id=?', (id_,))
     conn.commit(); conn.close()
     return jsonify({'ok': True})
 
-# ── Habits ─────────────────────────────────────────────────
+# ── Habits ─────────────────────────────────────────────────────────
 @app.route('/api/habits', methods=['GET'])
+@require_auth
 def get_habits():
-    conn = get_db()
+    conn = get_db(g.user_id)
     rows = conn.execute('SELECT * FROM habits ORDER BY name').fetchall()
     result = []
     for r in rows:
@@ -117,10 +147,11 @@ def get_habits():
     return jsonify(result)
 
 @app.route('/api/habits', methods=['POST'])
+@require_auth
 def create_habit():
     data = request.json
     id_ = str(uuid.uuid4())
-    conn = get_db()
+    conn = get_db(g.user_id)
     conn.execute('INSERT INTO habits (id,name,activity_type,duration_minutes,preferred_time,days_of_week,max_stress_weight) VALUES (?,?,?,?,?,?,?)',
                  (id_, data['name'], data['activity_type'], data['duration_minutes'],
                   data.get('preferred_time'), json.dumps(data.get('days_of_week',[])), data.get('max_stress_weight',5)))
@@ -128,9 +159,10 @@ def create_habit():
     return jsonify({'id': id_})
 
 @app.route('/api/habits/<id_>', methods=['PUT'])
+@require_auth
 def update_habit(id_):
     data = request.json
-    conn = get_db()
+    conn = get_db(g.user_id)
     conn.execute('UPDATE habits SET name=?,activity_type=?,duration_minutes=?,preferred_time=?,days_of_week=?,max_stress_weight=?,is_active=? WHERE id=?',
                  (data['name'], data['activity_type'], data['duration_minutes'],
                   data.get('preferred_time'), json.dumps(data.get('days_of_week',[])),
@@ -139,25 +171,28 @@ def update_habit(id_):
     return jsonify({'ok': True})
 
 @app.route('/api/habits/<id_>', methods=['DELETE'])
+@require_auth
 def delete_habit(id_):
-    conn = get_db()
+    conn = get_db(g.user_id)
     conn.execute('DELETE FROM habits WHERE id=?', (id_,))
     conn.commit(); conn.close()
     return jsonify({'ok': True})
 
-# ── Tags ───────────────────────────────────────────────────
+# ── Tags ───────────────────────────────────────────────────────────
 @app.route('/api/tags', methods=['GET'])
+@require_auth
 def get_tags():
-    conn = get_db()
+    conn = get_db(g.user_id)
     rows = conn.execute('SELECT * FROM tags ORDER BY name').fetchall()
     conn.close()
     return jsonify(rows_to_list(rows))
 
 @app.route('/api/tags', methods=['POST'])
+@require_auth
 def create_tag():
     data = request.json
     id_ = str(uuid.uuid4())
-    conn = get_db()
+    conn = get_db(g.user_id)
     try:
         conn.execute('INSERT INTO tags (id,name,color) VALUES (?,?,?)',
                      (id_, data['name'].strip(), data.get('color', '#7c6fff')))
@@ -168,26 +203,29 @@ def create_tag():
         return jsonify({'error': str(e)}), 400
 
 @app.route('/api/tags/<id_>', methods=['PUT'])
+@require_auth
 def update_tag(id_):
     data = request.json
-    conn = get_db()
+    conn = get_db(g.user_id)
     conn.execute('UPDATE tags SET name=?,color=? WHERE id=?',
                  (data['name'].strip(), data.get('color', '#7c6fff'), id_))
     conn.commit(); conn.close()
     return jsonify({'ok': True})
 
 @app.route('/api/tags/<id_>', methods=['DELETE'])
+@require_auth
 def delete_tag(id_):
-    conn = get_db()
+    conn = get_db(g.user_id)
     conn.execute('DELETE FROM tags WHERE id=?', (id_,))
     conn.commit(); conn.close()
     return jsonify({'ok': True})
 
-# ── Tasks ──────────────────────────────────────────────────
+# ── Tasks ──────────────────────────────────────────────────────────
 @app.route('/api/tasks', methods=['GET'])
+@require_auth
 def get_tasks():
     status = request.args.get('status')
-    conn = get_db()
+    conn = get_db(g.user_id)
     base = '''
         SELECT t.*, tg.name as tag_name, tg.color as tag_color
         FROM tasks t
@@ -201,10 +239,11 @@ def get_tasks():
     return jsonify(rows_to_list(rows))
 
 @app.route('/api/tasks', methods=['POST'])
+@require_auth
 def create_task():
     data = request.json
     id_ = str(uuid.uuid4())
-    conn = get_db()
+    conn = get_db(g.user_id)
     conn.execute(
         'INSERT INTO tasks (id,title,type,effort,estimated_minutes,due_date,allow_split,allow_weekend,notes,is_event,event_date,start_time,end_time,tag_id) '
         'VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
@@ -220,9 +259,10 @@ def create_task():
     return jsonify({'id': id_})
 
 @app.route('/api/tasks/<id_>', methods=['PUT'])
+@require_auth
 def update_task(id_):
     data = request.json
-    conn = get_db()
+    conn = get_db(g.user_id)
     conn.execute(
         'UPDATE tasks SET title=?,type=?,effort=?,estimated_minutes=?,due_date=?,allow_split=?,allow_weekend=?,status=?,notes=?,is_event=?,event_date=?,start_time=?,end_time=?,tag_id=? WHERE id=?',
         (data['title'], data.get('type', 'personal'), data.get('effort', 'medium'),
@@ -237,16 +277,18 @@ def update_task(id_):
     return jsonify({'ok': True})
 
 @app.route('/api/tasks/<id_>', methods=['DELETE'])
+@require_auth
 def delete_task(id_):
-    conn = get_db()
+    conn = get_db(g.user_id)
     conn.execute('DELETE FROM tasks WHERE id=?', (id_,))
     conn.commit(); conn.close()
     return jsonify({'ok': True})
 
-# ── Day Plans ──────────────────────────────────────────────
+# ── Day Plans ──────────────────────────────────────────────────────
 @app.route('/api/day-plan/<date_str>', methods=['GET'])
+@require_auth
 def get_day_plan(date_str):
-    conn = get_db()
+    conn = get_db(g.user_id)
     plan, free_windows, day_weight = generate_suggestions(conn, date_str)
 
     slots = conn.execute("""
@@ -277,12 +319,13 @@ def get_day_plan(date_str):
     })
 
 @app.route('/api/week-plan', methods=['GET'])
+@require_auth
 def get_week_plan():
     start = request.args.get('start')
     if not start:
         return jsonify({'error': 'start required'}), 400
 
-    conn = get_db()
+    conn = get_db(g.user_id)
     results = []
     start_date = datetime.strptime(start, '%Y-%m-%d').date()
 
@@ -322,10 +365,11 @@ def get_week_plan():
     return jsonify(results)
 
 @app.route('/api/slots/<id_>/status', methods=['PATCH'])
+@require_auth
 def update_slot_status(id_):
     data = request.json
     status = data['status']
-    conn = get_db()
+    conn = get_db(g.user_id)
     conn.execute('UPDATE scheduled_slots SET status=? WHERE id=?', (status, id_))
 
     if status == 'done':
@@ -346,37 +390,43 @@ def update_slot_status(id_):
     conn.commit(); conn.close()
     return jsonify({'ok': True})
 
-# ── Settings ───────────────────────────────────────────────
+# ── Settings ───────────────────────────────────────────────────────
 @app.route('/api/settings', methods=['GET'])
+@require_auth
 def get_settings():
-    conn = get_db()
+    conn = get_db(g.user_id)
     rows = conn.execute('SELECT * FROM settings').fetchall()
     conn.close()
     return jsonify({r['key']: r['value'] for r in rows})
 
 @app.route('/api/settings', methods=['PATCH'])
+@require_auth
 def update_settings():
     data = request.json
-    conn = get_db()
+    conn = get_db(g.user_id)
     for key, value in data.items():
         conn.execute('INSERT OR REPLACE INTO settings (key,value) VALUES (?,?)', (key, str(value)))
     conn.commit(); conn.close()
     return jsonify({'ok': True})
 
-# ── Microsoft 365 ─────────────────────────────────────────────────
+# ── Microsoft 365 ──────────────────────────────────────────────────
 @app.route('/api/ms/auth-url', methods=['GET'])
+@require_auth
 def ms_auth_url():
     if not is_configured():
         return jsonify({'error': 'MS_CLIENT_ID e MS_CLIENT_SECRET não configurados'}), 400
-    return jsonify({'url': get_auth_url()})
+    return jsonify({'url': get_auth_url(g.user_id)})
 
 @app.route('/api/ms/callback', methods=['GET'])
 def ms_callback():
     code  = request.args.get('code')
     error = request.args.get('error')
+    # user_id vem do state param que foi incluído em get_auth_url
+    state = request.args.get('state', 'kauany')
+    user_id = state if state in USERS else 'kauany'
     if error or not code:
         return redirect(f'{FRONTEND_URL}/settings?ms=error')
-    conn = get_db()
+    conn = get_db(user_id)
     try:
         handle_callback(code, conn)
         conn.close()
@@ -386,8 +436,9 @@ def ms_callback():
         return redirect(f'{FRONTEND_URL}/settings?ms=error')
 
 @app.route('/api/ms/status', methods=['GET'])
+@require_auth
 def ms_status():
-    conn  = get_db()
+    conn  = get_db(g.user_id)
     token = get_access_token(conn)
     if not token:
         conn.close()
@@ -397,17 +448,19 @@ def ms_status():
     return jsonify({'connected': True, **info})
 
 @app.route('/api/ms/disconnect', methods=['DELETE'])
+@require_auth
 def ms_disconnect():
-    conn = get_db()
+    conn = get_db(g.user_id)
     disconnect(conn)
     conn.close()
     return jsonify({'ok': True})
 
 @app.route('/api/ms/import', methods=['POST'])
+@require_auth
 def ms_import():
     data = request.json or {}
     days = max(1, min(90, int(data.get('days', 30))))
-    conn = get_db()
+    conn = get_db(g.user_id)
     try:
         result = import_calendar_events(conn, days)
         conn.close()
@@ -416,8 +469,9 @@ def ms_import():
         conn.close()
         return jsonify({'error': str(e)}), 400
 
-# ── Telegram status ───────────────────────────────────────────────
+# ── Telegram status ────────────────────────────────────────────────
 @app.route('/api/telegram/status', methods=['GET'])
+@require_auth
 def telegram_status():
     import os as _os
     configured = bool(_os.environ.get('TELEGRAM_BOT_TOKEN'))

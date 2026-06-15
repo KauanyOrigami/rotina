@@ -1,6 +1,8 @@
 import React from 'react';
 import { BrowserRouter, Routes, Route, NavLink } from 'react-router-dom';
 import './styles/global.css';
+import { AuthProvider, useAuth } from './context/AuthContext';
+import Login from './pages/Login';
 import Today from './pages/Today';
 import Week from './pages/Week';
 import Month from './pages/Month';
@@ -21,6 +23,8 @@ function NavItem({ to, icon, label }) {
 }
 
 function Sidebar() {
+  const { auth, logout } = useAuth();
+
   return (
     <aside className="sidebar">
       <div className="sidebar-logo">
@@ -41,11 +45,53 @@ function Sidebar() {
         <NavItem to="/setup"    icon="⚙️" label="Configuração" />
         <NavItem to="/settings" icon="🔧" label="Preferências" />
       </nav>
+
+      <div style={sidebarFooterStyle}>
+        <span style={userNameStyle}>{auth?.user?.name}</span>
+        <button onClick={logout} style={logoutBtnStyle} title="Sair">
+          Sair
+        </button>
+      </div>
     </aside>
   );
 }
 
-export default function App() {
+const sidebarFooterStyle = {
+  marginTop: 'auto',
+  padding: '16px 20px',
+  borderTop: '1px solid var(--border)',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  gap: '8px',
+};
+
+const userNameStyle = {
+  fontSize: '12px',
+  color: 'var(--text2)',
+  fontWeight: 500,
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
+};
+
+const logoutBtnStyle = {
+  background: 'none',
+  border: '1px solid var(--border)',
+  borderRadius: 'var(--radius)',
+  color: 'var(--text3)',
+  fontSize: '11px',
+  padding: '4px 8px',
+  cursor: 'pointer',
+  whiteSpace: 'nowrap',
+  flexShrink: 0,
+};
+
+function AppShell() {
+  const { auth } = useAuth();
+
+  if (!auth) return <Login />;
+
   return (
     <BrowserRouter>
       <div className="app-shell">
@@ -62,5 +108,13 @@ export default function App() {
         </main>
       </div>
     </BrowserRouter>
+  );
+}
+
+export default function App() {
+  return (
+    <AuthProvider>
+      <AppShell />
+    </AuthProvider>
   );
 }
