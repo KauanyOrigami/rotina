@@ -34,6 +34,10 @@ STRESS_LABEL = {0:'⚪️ Nenhuma',1:'🟢 Leve',2:'🟢 Leve',
 EFFORT_ICON  = {'low':'🟢','medium':'🟡','high':'🔴'}
 EFFORT_NAME  = {'low':'Leve','medium':'Médio','high':'Intenso'}
 
+_PROXIES = {
+    'http':  'http://proxy.server:3128',
+    'https': 'http://proxy.server:3128',
+}
 # ── Helpers de formatação ─────────────────────────────────────────
 
 def hdr(emoji, title, subtitle=None):
@@ -101,13 +105,16 @@ def st_clear(chat_id):
 
 # ── Telegram helpers ──────────────────────────────────────────────
 
+
+
 def tg(method, **kw):
     try:
-        r = requests.post(f'{BASE}/{method}', json=kw, timeout=10)
+        r = requests.post(f'{BASE}/{method}', json=kw, timeout=10, proxies=_PROXIES)
         return r.json()
     except Exception as e:
         print(f'[tg] {e}')
         return {}
+
 
 def send(chat_id, text):
     return tg('sendMessage', chat_id=chat_id, text=text,
@@ -130,10 +137,11 @@ def get_updates(offset=None):
     params = {'timeout': 30, 'allowed_updates': ['message', 'callback_query']}
     if offset: params['offset'] = offset
     try:
-        r = requests.get(f'{BASE}/getUpdates', params=params, timeout=35)
+        r = requests.get(f'{BASE}/getUpdates', params=params, timeout=35, proxies=_PROXIES)
         return r.json().get('result', [])
     except Exception:
         return []
+
 
 # ── Tag detection ─────────────────────────────────────────────────
 
